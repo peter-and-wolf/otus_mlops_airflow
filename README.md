@@ -4,20 +4,36 @@
 
 [ссылка на оригинальную документацию](https://airflow.apache.org/docs/apache-airflow/stable/howto/docker-compose/index.html#fetching-docker-compose-yaml) 
 
-1. Сперва необходино установить переменную окружнния с идентификатором прользователя, от которого стартанут контейнеры. Выполните:
+В директории [airflow](airflow):
+
+1. Создайте директории, которые будут монтироваться в volumes docker-compose.
 
     ```bash
-    echo -e "AIRFLOW_UID=$(id -u)" > .env
+    make dirs
     ```
 
-1. Теперь инициализируем базу данных:
+1. Инициализируйте базу данных airflow:
 
     ```bash
-    docker compose up airflow-init
+    make init
     ```
   
-1. И запускаем airflow:
+1. Запустите все контейнеры airflow:
 
     ```bash
-    docker compose up
+    make start
     ```
+
+## Остановка сервисов Airflow
+
+Остановить запущенные контейнеры можно так:
+
+```bash
+make stop
+```
+
+И прибрать за собой:
+
+```bash
+make clean
+```
