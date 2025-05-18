@@ -178,3 +178,4 @@ airflow/config
 airflow/dags
 airflow/logs
 airflow/plugins
+etl_ipynb.py

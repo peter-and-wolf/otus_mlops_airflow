@@ -4,9 +4,13 @@ import hashlib
 import random
 import logging
 from io import StringIO, BytesIO
+from datetime import timedelta
 
 from boto3 import resource  # type: ignore
 import pandas as pd  # type: ignore
+
+from airflow import DAG  # type: ignore
+from airflow.providers.standard.operators.python import PythonOperator  # type: ignore
 
 
 AWS_ACCESS_KEY_ID = 'YCAJEZBqrd9eCpbuwP9Naze_F'
@@ -15,6 +19,17 @@ TARGET_YEAR = 2000
 PATH_TO_DATA = 'https://raw.githubusercontent.com/peter-and-wolf/otus_mlops_airflow/refs/heads/main/data/GlobalLandTemperaturesByCountry.csv'
 S3_ENDPOINT_URL = 'http://storage.yandexcloud.net'
 S3_BUCKET_NAME = 'bucket-43'
+
+
+default_args = {
+    "owner": "peter-and-wolf",
+    "depends_on_past": False,
+    "start_date": "2025-05-18",
+    "email_on_failure": False,
+    "email_on_retry": False,
+    "retries": 1,
+    "retry_delay": timedelta(minutes=5),
+}
 
 
 def generate_key() -> str:
@@ -28,15 +43,23 @@ def extract_data(path: str, year: int = TARGET_YEAR) -> str:
   return df[df['Year'] >= year].reset_index().to_csv()
 
 
-def transform_data(data: str) -> str:
+def transform_data(**kwargs) -> str:
   logging.info(f'Transforming data')
+  
+  # get data from extract_data task using xcom_pull
+  ti = kwargs['ti']
+  data = ti.xcom_pull(task_ids='extract_data')
+  
   df = pd.read_csv(StringIO(data))
   gb = df.groupby('Country')['AverageTemperature'] 
   return gb.median().reset_index().to_csv()
 
 
-def load_data(data: str) -> None:
+def load_data(**kwargs) -> None:
   logging.info(f'Loading data to S3')
+
+  ti = kwargs['ti']
+  data = ti.xcom_pull(task_ids='transform_data')
   s3 = resource(
     's3',
     endpoint_url=S3_ENDPOINT_URL,
@@ -49,12 +72,29 @@ def load_data(data: str) -> None:
     f'temperature/{generate_key()}'
   )
 
-
-if __name__ == '__main__':
-  logging.basicConfig(level=logging.INFO)
-  load_data(
-    transform_data(
-      extract_data(PATH_TO_DATA)
-    )
+with DAG(
+  'simple_etl',
+  default_args=default_args,
+  description="A simple ETL pipeline",
+  schedule=timedelta(days=1),
+  catchup=False,
+  tags=['etl'],
+) as dag:
+  
+  extract_task = PythonOperator(
+    task_id='extract_data',
+    python_callable=extract_data,
+    op_kwargs={'path': PATH_TO_DATA},
   )
-  logging.info(f'done...')
+
+  transform_task = PythonOperator(
+    task_id='transform_data',
+    python_callable=transform_data,
+  )
+
+  load_task = PythonOperator(
+    task_id='load_data',
+    python_callable=load_data,
+  )
+
+  extract_task >> transform_task >> load_task
