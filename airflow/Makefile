@@ -1,7 +1,8 @@
 init:
 	rm -rf dags logs plugins config
 	mkdir -p dags logs plugins config
-	@echo "AIRFLOW_UID=$(id -u)" > .env
+	rm -rf .env
+	echo "AIRFLOW_UID=$$(id -u)" > .env
 	docker compose up airflow-init
 
 start:
