@@ -10,7 +10,7 @@ from airflow.providers.standard.operators.python import PythonOperator  # type: 
 
 
 PATH_TO_DATA = 'https://raw.githubusercontent.com/peter-and-wolf/otus_mlops_airflow/refs/heads/main/data/GlobalLandTemperaturesByCountry.csv'
-TARGET_COUNTRIES = ['Sweden', 'Norway', 'Danmark']
+TARGET_COUNTRIES = ['Sweden', 'Norway', 'Denmark']
 
 
 default_args = {
@@ -20,7 +20,7 @@ default_args = {
     "email_on_failure": False,
     "email_on_retry": False,
     "retries": 1,
-    "retry_delay": timedelta(minutes=5),
+    "retry_delay": timedelta(minutes=1),
 }
 
 
@@ -30,12 +30,12 @@ def extract_data(path: str, countries: list[str] = TARGET_COUNTRIES) -> str:
   return df[df['Country'].isin(countries)].reset_index().to_csv()
 
 
-def calc_median(data: str, country: str, **kwargs) -> float:
+def calc_median(country: str, **kwargs) -> float:
   logging.info(f'Caclulating median temperature for {country}')
   
   # get data from extract_data task using xcom_pull
   ti = kwargs['ti']
-  data = ti.xcom_pull(task_ids='calc_median')
+  data = ti.xcom_pull(task_ids='extract_data')
   
   df = pd.read_csv(StringIO(data))
   return float(df[df['Country'] == country].groupby('Country')['AverageTemperature'].median().iloc[0])
@@ -49,7 +49,7 @@ def calc_min_temp(**kwargs) -> str:
   data = ti.xcom_pull(task_ids=[
     'calc_median_sweden',
     'calc_median_norway',
-    'calc_median_danmark',
+    'calc_median_denmark',
   ])
   
   logging.info(f'Minimum median temperature: {min(data)}')
@@ -60,7 +60,7 @@ with DAG(
   'min_temp_calc',
   default_args=default_args,
   description="DAG to calculate the minimum median temperature",
-  schedule=timedelta(days=1),
+  schedule="*/15 * * * *",
   catchup=False,
   tags=['calc'],
 ) as dag:
@@ -84,9 +84,9 @@ with DAG(
   )
 
   calc_task3 = PythonOperator(
-    task_id='calc_median_danmark',
+    task_id='calc_median_denmark',
     python_callable=calc_median,
-    op_kwargs={'country': 'Danmark'},
+    op_kwargs={'country': 'Denmark'},
   )
 
   calc_min_task = PythonOperator(
